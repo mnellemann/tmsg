@@ -1,0 +1,126 @@
+plugins {
+    id 'java'
+    id 'groovy'
+    id 'application'
+    id 'jacoco'
+    id "net.nemerosa.versioning" version "2.5.1"
+    id "com.netflix.nebula.ospackage" version "11.8.1"
+    id "com.github.johnrengelman.shadow" version "7.1.2"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    annotationProcessor 'info.picocli:picocli-codegen:4.7.6'
+    implementation 'info.picocli:picocli:4.7.6'
+    implementation 'org.slf4j:slf4j-api:2.0.12'
+    implementation 'org.slf4j:slf4j-simple:2.0.13'
+    implementation 'com.github.pengrad:java-telegram-bot-api:7.4.0'
+
+    testImplementation 'org.spockframework:spock-core:2.3-groovy-3.0'
+}
+
+application {
+    getMainClass().set('biz.nellemann.tmsg.Application')
+}
+
+java {
+    sourceCompatibility = 1.8
+    targetCompatibility = 1.8
+}
+
+test {
+    useJUnitPlatform()
+}
+
+jacoco {
+    toolVersion = "0.8.10"
+}
+
+jacocoTestReport {
+    group = "verification"
+    reports {
+        xml.required = false
+        csv.required = false
+        html.destination file("${buildDir}/reports/coverage")
+    }
+}
+test.finalizedBy jacocoTestReport
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                counter = 'LINE'
+                minimum = 0.3
+            }
+            limit {
+                counter = 'BRANCH'
+                minimum = 0.3
+            }
+            limit {
+                counter = 'CLASS'
+                minimum = 0.4
+            }
+        }
+    }
+}
+check.dependsOn jacocoTestCoverageVerification
+
+ospackage {
+    packageName = 'tmsg'
+    release = '1'
+    user = 'root'
+    packager = "Mark Nellemann <mark.nellemann@gmail.com>"
+
+    into '/opt/tmsg'
+
+    from(shadowJar.outputs.files) {
+        into 'lib'
+    }
+
+    from('build/scriptsShadow') {
+        into 'bin'
+    }
+
+    from('doc/') {
+        into 'doc'
+    }
+
+    from(['README.md', 'LICENSE']) {
+        into 'doc'
+    }
+
+}
+
+buildRpm {
+    dependsOn startShadowScripts
+    os = "LINUX"
+}
+
+buildDeb {
+    dependsOn startShadowScripts
+}
+
+jar {
+    manifest {
+        attributes(
+            'Created-By'     : "Gradle ${gradle.gradleVersion}",
+            'Build-OS'       : "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}",
+            'Build-Jdk'      : "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
+            'Build-User'     : System.properties['user.name'],
+            'Build-Version'  : versioning.info.tag ?: (versioning.info.branch + "-" + versioning.info.build),
+            'Build-Revision' : versioning.info.commit,
+            'Build-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ss.SSSZ").toString(),
+        )
+    }
+}
+
+tasks.register("packages") {
+    group "build"
+    dependsOn ":build"
+    dependsOn ":buildDeb"
+    dependsOn ":buildRpm"
+}
